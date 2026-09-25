@@ -13,18 +13,25 @@ and joins their team. Survivors win if at least one of them is still clean when 
 
 Dash goes in the direction you last pushed the stick, so it works from standing still.
 
-Host keyboard: **G** = start now (skips ready-up, works with one player), **R** = reset to lobby.
+## Host controls
+
+Buttons top-right of the game area, or keys: **G** start now (skips ready-up, works with one player),
+**Esc** pause / resume (the game clock stops, so timers and cooldowns freeze too), **R** reset to lobby,
+**+ / −** add or remove a test bot. Bots wander in the lobby and chase / flee during a round; they count
+as ready, so one human plus bots can start a round for demo prep. Bots never get phone hints.
 
 ## How a round goes
 
-1. **Lobby.** Everyone runs around freely. Each phone shows "Press A when ready".
-   When every connected player (min. 2) is ready, the round starts on its own.
-2. **Countdown (3 s).** Everyone is respawned at a random spot and frozen.
+1. **Lobby.** Everyone runs around freely. The big screen shows a drawn phone pad (stick = move,
+   A = ready, B = dash) and each dot carries a badge: "move the stick" → "press A when ready" → "✓ READY".
+   Phones get the same coaching as hints. When every connected human (min. 2 players) is ready,
+   the round starts on its own.
+2. **Countdown (5 s).** Everyone is respawned at a random spot and frozen; a rules card is shown.
 3. **Play (90 s).** A random player becomes IT (shown on screen and on their phone).
    - Touching a survivor infects them. They turn green and now hunt the others.
    - A freshly infected player can't tag anyone for 0.8 s (no instant chain reactions).
    - The infected are 12% faster than survivors.
-   - The round ends when time is up or nobody is left clean.
+   - The round ends when time is up or nobody is left clean. A power-up legend sits bottom-left.
 4. **Results (8 s).** Ranking on the big screen, your place on your phone, then back to the lobby.
 
 **Ranking:** survivors first, then the infected by how long they lasted, and the original IT last.
@@ -50,7 +57,7 @@ Change them there, not in the game logic.
 
 - `index.ts` — the `GameModule`: phases, movement, tagging, power-ups, phone hints.
 - `state.ts` — per-player state (`Ent`) and the phase types.
-- `render.ts` — canvas drawing (players, power-ups, HUD, results table).
+- `render.ts` — canvas drawing (players, power-ups, HUD, how-to card, rules card, results, pause).
 - `config.ts` — tunables and power-up definitions.
 
 ## Test it alone
