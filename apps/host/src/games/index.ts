@@ -1,8 +1,10 @@
 import type { GameModule } from '../game/GameModule';
 import { DotsGame } from './dots';
+import { MeadowGame } from './meadow';
 
 export const GAMES: Record<string, GameModule> = {
   dots: DotsGame,
+  meadow: MeadowGame,
 };
 
 export const DEFAULT_GAME = 'dots';
