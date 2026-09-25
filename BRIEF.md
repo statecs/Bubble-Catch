@@ -6,7 +6,8 @@ browser-based party game where an audience joins from their phones using a join
 code shown on a big screen (like Kahoot / Jackbox). Phones act as controllers
 (e.g. a virtual joystick); the big screen renders the shared game world.
 
-We have NOT decided on the game yet. Your job is the platform underneath it.
+We have NOT decided on the exact game yet. Your job is the platform underneath it.
+the only seed for game idea is that users move around using joystick, with the host screen being the game area. 
 
 You are the architect. Your role is to make the decisions that let three people,
 each with their own Claude instance, work in parallel without stepping on each
@@ -22,6 +23,7 @@ A working monorepo that provides:
   placeholder game (e.g. each player is a dot moved by their joystick) that
   proves the loop end to end
 - Docs that other Claude instances will read before working in the repo
+- git branches for each track to work in parallell
 
 Do NOT build any real game logic. Stop at the placeholder.
 
@@ -78,12 +80,13 @@ Keep the docs short and scannable. They're read by models under time pressure.
 ## How to work
 - You decide the structure, libraries and sequencing within these constraints.
   State your key decisions and trade-offs briefly in the docs.
-- You may delegate well-bounded pieces to other models (e.g. the controller
+- You may delegate well-bounded pieces to models other than fable (e.g. the controller
   UI or host lobby UI to Opus or Sonnet) while you own the architecture, the
   contract and the docs. Review what you delegate against the constraints
   before accepting it.
 - If a constraint blocks something important, flag it rather than quietly
   working around it.
+- For critical decision that severly affect future steps, ask me.
 
 ## Definition of finished
 The success criteria above are demonstrably met, the docs exist, and you have

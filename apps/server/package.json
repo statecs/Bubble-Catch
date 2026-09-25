@@ -1,0 +1,22 @@
+{
+  "name": "@party/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc -p tsconfig.json",
+    "fake:host": "tsx scripts/fake-host.ts",
+    "fake:controller": "tsx scripts/fake-controller.ts"
+  },
+  "dependencies": {
+    "@party/contract": "*",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/ws": "^8.5.12",
+    "tsx": "^4.19.0"
+  }
+}

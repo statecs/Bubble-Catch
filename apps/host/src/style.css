@@ -1,0 +1,135 @@
+:root {
+  --bg: #0b0f17;
+  --panel: #111827;
+  --border: #1f2937;
+  --text: #f1f5f9;
+  --muted: #94a3b8;
+  --accent: #fbbf24;
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  overflow: hidden;
+}
+
+#app {
+  display: flex;
+  height: 100vh;
+  width: 100vw;
+}
+
+#lobby {
+  flex: 0 0 320px;
+  width: 320px;
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow-y: auto;
+}
+
+#game {
+  flex: 1 1 auto;
+  position: relative;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.label {
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+}
+
+.join-code {
+  font-size: 88px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  line-height: 1;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.qr {
+  background: #fff;
+  border-radius: 12px;
+  padding: 8px;
+  align-self: center;
+  line-height: 0;
+}
+.qr canvas { width: 256px !important; height: 256px !important; }
+
+.controller-url {
+  font-size: 14px;
+  color: var(--muted);
+  word-break: break-all;
+  text-align: center;
+}
+
+.status-pill {
+  align-self: flex-start;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 600;
+  background: #374151;
+}
+.status-open { background: #14532d; color: #bbf7d0; }
+.status-connecting { background: #713f12; color: #fde68a; }
+.status-closed { background: #7f1d1d; color: #fecaca; }
+.status-mock { background: #312e81; color: #c7d2fe; }
+
+.legend { display: flex; flex-direction: column; gap: 8px; font-size: 16px; }
+.legend-row { display: flex; flex-direction: column; }
+.legend-name { font-weight: 700; }
+.legend-keys { color: var(--muted); }
+
+.players-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-top: 8px;
+}
+.player-count { font-size: 28px; font-weight: 700; }
+
+.player-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1 1 auto;
+}
+.player {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 24px;
+  font-weight: 600;
+}
+.player.away { opacity: 0.4; }
+.player.empty { color: var(--muted); font-size: 18px; font-weight: 400; }
+.swatch {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  flex: 0 0 20px;
+}
+.player-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.away-tag { font-size: 16px; color: var(--muted); }
+
+.game-label {
+  font-size: 12px;
+  color: var(--muted);
+}

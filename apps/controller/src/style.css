@@ -1,0 +1,70 @@
+:root {
+  --bg: #0b0d12;
+  --panel: #161a23;
+  --fg: #e8ebf2;
+  --muted: #8a93a6;
+  --accent: #3b82f6;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body {
+  margin: 0; height: 100%; background: var(--bg); color: var(--fg);
+  font: 16px/1.3 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  overscroll-behavior: none; overflow: hidden;
+  user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+}
+#app { height: 100dvh; display: flex; flex-direction: column;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
+
+/* join */
+.join { margin: auto; width: min(92vw, 380px); display: flex; flex-direction: column; gap: 14px; }
+.join-title { margin: 0 0 6px; font-size: 28px; text-align: center; }
+.lbl { display: flex; flex-direction: column; gap: 6px; }
+.lbl-text { color: var(--muted); font-size: 14px; }
+.field { font: inherit; font-size: 20px; padding: 14px 16px; border-radius: 12px; border: 2px solid #2a3040;
+  background: var(--panel); color: var(--fg); outline: none; user-select: text; -webkit-user-select: text; }
+.field:focus { border-color: var(--accent); }
+.field.code { text-transform: uppercase; letter-spacing: .4em; text-align: center; font-size: 32px; font-weight: 700; }
+.join-btn { font: inherit; font-size: 22px; font-weight: 700; min-height: 60px; border: 0; border-radius: 14px;
+  background: var(--accent); color: #fff; }
+.join-btn:disabled { opacity: .6; }
+.join-error { min-height: 1.3em; margin: 0; color: #f87171; text-align: center; }
+
+/* pad screen */
+.screen { flex: 1; display: flex; flex-direction: column; min-height: 0; position: relative; }
+.bar { display: flex; align-items: center; gap: 10px; padding: 8px 12px; background: var(--panel); font-size: 15px; }
+.swatch { width: 22px; height: 22px; border-radius: 6px; flex: none; background: #555; }
+.pname { font-weight: 700; flex: none; max-width: 30vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.uitext { flex: 1; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dot { width: 10px; height: 10px; border-radius: 50%; flex: none; background: #ef4444; }
+.dot[data-status='open'] { background: #22c55e; }
+.dot[data-status='connecting'] { background: #eab308; }
+.leave { color: var(--muted); font-size: 14px; padding: 6px 4px; text-decoration: underline; }
+
+.pad { flex: 1; display: flex; align-items: flex-end; justify-content: space-between; padding: 16px 20px 28px;
+  touch-action: none; min-height: 0; }
+.pad-left, .pad-right { display: flex; align-items: flex-end; }
+.pad-right { gap: 16px; }
+
+.stick { position: relative; width: min(45vw, 260px); aspect-ratio: 1; border-radius: 50%;
+  background: radial-gradient(circle, #1f2533 0 55%, #171b25 56%); border: 3px solid #2a3040; touch-action: none; }
+.stick.active { border-color: var(--accent); }
+.stick-knob { position: absolute; left: 50%; top: 50%; width: 42%; aspect-ratio: 1; border-radius: 50%;
+  background: #3a4256; box-shadow: 0 4px 12px #0008; transform: translate(-50%, -50%); pointer-events: none; }
+.stick.active .stick-knob { background: #56617d; }
+
+.btn { width: min(24vw, 120px); aspect-ratio: 1; border-radius: 50%; display: grid; place-items: center;
+  font-size: 34px; font-weight: 800; color: #fff; touch-action: none; transition: transform 40ms; }
+.btn-a { background: #16a34a; margin-bottom: 40px; }
+.btn-b { background: #dc2626; }
+.btn.pressed { transform: scale(.92); filter: brightness(1.3); }
+
+@media (orientation: portrait) {
+  .pad { flex-direction: column-reverse; align-items: stretch; justify-content: space-around; }
+  .pad-left { justify-content: flex-start; }
+  .pad-right { justify-content: flex-end; }
+}
+
+.mock { position: absolute; top: 44px; left: 8px; right: 8px; pointer-events: none; font-size: 11px; color: #9fb0d0; }
+.mockcount { font-weight: 700; }
+.mocklog { margin: 2px 0 0; font: 11px/1.3 ui-monospace, Menlo, monospace; white-space: pre; opacity: .85; }
