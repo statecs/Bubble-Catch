@@ -3,8 +3,9 @@
  * around a pastel meadow collecting bubbles, leaves, berries and flowers.
  * Stick = walk, A = hop, B = dash. All art comes from @party/world.
  *
- * Free play by default. Host controls (panel top-right + keys): G start a timed round
- * (most items wins), Esc pause/resume, R reset to free play, +/− test bots.
+ * Phases: lobby (walk around, collect for fun, A = ready) → 5 s countdown → 60 s round
+ * (most items wins) → results → lobby. The round starts when every player is ready.
+ * Host controls (panel top-right + keys): G start now, Esc pause/resume, R reset to lobby, +/− test bots.
  */
 import { PLAYER_COLORS, ZERO_INPUT, type Axis, type InputState, type Player, type PlayerId } from '@party/contract';
 import {
@@ -27,6 +28,7 @@ import {
   type Species,
 } from '@party/world';
 import type { GameContext, GameModule } from '../../game/GameModule';
+import { PHONE_CARD_SPACE, drawHud, drawPhoneCard, lobbyBadge, type Phase, type RankRow } from './hud';
 
 const ANIMAL_SIZE = 116; // css px sprite box
 const ITEM_SIZE = 50;
@@ -42,9 +44,14 @@ const PUFF_TIME = 0.5;
 const COLLECT_DIST = ANIMAL_SIZE * 0.3 + ITEM_SIZE * 0.3;
 const SPAWN_EVERY = 0.7; // s between spawns while below target
 const FEET = ANIMAL_SIZE * (ANIMAL_FEET_Y - 0.5); // sprite centre -> soles
+const MIN_PLAYERS = 2;
+const COUNTDOWN_TIME = 5; // s
 const ROUND_TIME = 60; // s
-const RESULTS_TIME = 6; // s the winner banner shows before free play resumes
+const RESULTS_TIME = 8; // s
+const JOIN_HINT = 'Stick = walk · A = hop / ready · B = dash';
+const READY_HINT = 'Press A when ready · B = dash';
 const BOT_RETARGET = 2.5; // s between a bot's wander targets when there's nothing to collect
+const BOT_SPEED = 0.55; // fraction of a full stick, so humans can beat them
 
 /** What the game needs to know about a player: real (from the roster) or a test bot. */
 interface Who {
@@ -60,12 +67,10 @@ interface Bot {
   ty: number;
   retargetAt: number;
   hopAt: number;
+  /** Item this bot is heading for; other bots pick something else so they don't pile up. */
+  target: Item | null;
 }
 
-type Phase =
-  | { kind: 'free' }
-  | { kind: 'round'; endsAt: number }
-  | { kind: 'results'; endsAt: number; text: string };
 
 interface Critter {
   species: Species;
@@ -83,6 +88,9 @@ interface Critter {
   prevA: boolean;
   prevB: boolean;
   score: number;
+  ready: boolean;
+  /** Onboarding: has touched the stick since joining. */
+  hasMoved: boolean;
 }
 
 interface Item {
@@ -127,7 +135,7 @@ const critters = new Map<PlayerId, Critter>();
 let items: Item[] = [];
 let pops: Pop[] = [];
 let puffs: Puff[] = [];
-let phase: Phase = { kind: 'free' };
+let phase: Phase = { kind: 'lobby' };
 let paused = false;
 const bots = new Map<PlayerId, Bot>();
 let botSeq = 0;
@@ -181,7 +189,7 @@ function ensureCritter(player: { id: PlayerId; color: string }): Critter {
     accent: pastelize(player.color, 0.3),
     body: repeatBody(spec, player.color, round),
     x: b.minX + Math.random() * (b.maxX - b.minX),
-    y: b.minY + Math.random() * (b.maxY - b.minY),
+    y: b.minY + Math.random() * (Math.max(b.minY, Math.min(b.maxY, height - PHONE_CARD_SPACE - FEET - 30)) - b.minY),
     facing: Math.random() < 0.5 ? 1 : -1,
     walkT: 0,
     hopT: -1,
@@ -192,6 +200,8 @@ function ensureCritter(player: { id: PlayerId; color: string }): Critter {
     prevA: false,
     prevB: false,
     score: 0,
+    ready: false,
+    hasMoved: false,
   };
   critters.set(player.id, c);
   return c;
@@ -200,7 +210,9 @@ function ensureCritter(player: { id: PlayerId; color: string }): Critter {
 function greet(player: Player): void {
   const c = ensureCritter(player);
   const name = ANIMALS.find((a) => a.id === c.species)!.name;
-  ctx?.sendToPlayer(player.id, { color: c.accent, text: `You are the ${name}!`, vibrate: 80 });
+  const text =
+    phase.kind === 'round' ? `${name}! Round on: grab items!` : phase.kind === 'lobby' ? `${name}! ${JOIN_HINT}` : `You are the ${name}!`;
+  ctx?.sendToPlayer(player.id, { color: c.accent, text: text.slice(0, 40), vibrate: 80 });
 }
 
 function randomKind(): CollectibleKind {
@@ -256,8 +268,12 @@ function update(dt: number): void {
     const input = inputFor(id, c);
     const { a, b: bBtn } = input.buttons;
 
-    if (a && !c.prevA && c.hopT < 0) c.hopT = 0;
-    if (bBtn && !c.prevB && c.dashCd <= 0) {
+    const frozen = phase.kind === 'countdown' || phase.kind === 'results';
+    if (a && !c.prevA) {
+      if (c.hopT < 0) c.hopT = 0;
+      if (phase.kind === 'lobby' && !bots.has(id)) toggleReady(id, c);
+    }
+    if (bBtn && !c.prevB && c.dashCd <= 0 && !frozen) {
       c.dashT = DASH_TIME;
       c.dashCd = DASH_COOLDOWN;
       c.puffCd = 0;
@@ -265,11 +281,15 @@ function update(dt: number): void {
     c.prevA = a;
     c.prevB = bBtn;
 
-    const mag = Math.hypot(input.axis.x, input.axis.y);
-    const speed = SPEED * (c.dashT > 0 ? DASH_MULT : 1);
+    const mag = frozen ? 0 : Math.hypot(input.axis.x, input.axis.y);
+    if (mag > 0.2 && !c.hasMoved) {
+      c.hasMoved = true;
+      if (phase.kind === 'lobby' && !bots.has(id)) hint(id, `Nice! ${READY_HINT}`, 40);
+    }
+    const speed = frozen ? 0 : SPEED * (c.dashT > 0 ? DASH_MULT : 1);
     c.x = clamp(c.x + input.axis.x * speed * dt, b.minX, b.maxX);
     c.y = clamp(c.y + input.axis.y * speed * dt, b.minY, b.maxY);
-    if (Math.abs(input.axis.x) > 0.15) c.facing = input.axis.x > 0 ? 1 : -1;
+    if (!frozen && Math.abs(input.axis.x) > 0.15) c.facing = input.axis.x > 0 ? 1 : -1;
     c.walkT = mag > 0.1 ? c.walkT + dt * (7 + 5 * mag) : 0;
 
     if (c.hopT >= 0) {
@@ -292,7 +312,8 @@ function update(dt: number): void {
   const connected = [...ctx.players.values()].filter((p) => p.connected).length + bots.size;
   const target = 3 + connected;
   spawnCd -= dt;
-  if (items.length < target && spawnCd <= 0 && width > 0) {
+  const live = phase.kind === 'lobby' || phase.kind === 'round';
+  if (live && items.length < target && spawnCd <= 0 && width > 0) {
     spawnItem();
     spawnCd = SPAWN_EVERY;
   }
@@ -309,7 +330,7 @@ function update(dt: number): void {
   }
 
   items = items.filter((it) => {
-    if (it.age < 0.3) return true; // let it finish appearing
+    if (it.age < 0.3 || !live) return true; // let it finish appearing
     for (const [id, c] of critters) {
       if (!info(id)?.connected) continue;
       if (Math.hypot(c.x - it.x, c.y - it.y) > COLLECT_DIST) continue;
@@ -417,6 +438,10 @@ function drawCritter(g: CanvasRenderingContext2D, id: PlayerId, c: Critter): voi
   }
 
   sticker(g, `${player.name} · ${c.score}`, c.x, feetY + 4, c.accent);
+  if (phase.kind === 'lobby' && player.connected) {
+    const top = feetY - hop - ANIMAL_SIZE * ANIMAL_FEET_Y + 14;
+    lobbyBadge(g, clamp(c.x, 90, Math.max(90, width - 90)), top, c.ready ? 'ready' : c.hasMoved ? 'ready-up' : 'move');
+  }
   g.globalAlpha = 1;
 }
 
@@ -474,6 +499,7 @@ function frame(now: number): void {
   if (background) g.drawImage(background, 0, 0, width, height);
   else g.clearRect(0, 0, width, height);
 
+  if (phase.kind === 'lobby') drawPhoneCard(g, width, height);
   for (const p of puffs) drawPuff(g, p);
 
   // depth sort by ground position so lower things overlap higher ones
@@ -484,33 +510,68 @@ function frame(now: number): void {
   for (const d of drawables) d.draw();
 
   for (const p of pops) drawPop(g, p.kind, p.x, p.y, ITEM_SIZE, p.t, p.seed);
-  drawHud(g);
+  const connected = [...critters.keys()].filter((id) => info(id)?.connected);
+  const leader = [...critters.entries()].sort((a, b) => b[1].score - a[1].score)[0];
+  drawHud({
+    g,
+    width,
+    height,
+    clock,
+    phase,
+    paused,
+    roundTime: ROUND_TIME,
+    connected: connected.length,
+    ready: connected.filter((id) => critters.get(id)!.ready).length,
+    minPlayers: MIN_PLAYERS,
+    leader: leader ? { name: info(leader[0])?.name ?? '???', score: leader[1].score } : null,
+  });
 }
 
 // ---------- rounds ----------
 
-function startRound(): void {
-  if (critters.size === 0) return;
-  paused = false;
-  phase = { kind: 'round', endsAt: clock + ROUND_TIME };
-  clearField();
-  hintAll(`Go! Most items in ${ROUND_TIME} s wins`, 80);
+function allReady(): boolean {
+  const ids = [...critters.keys()].filter((id) => info(id)?.connected);
+  const humans = ids.filter((id) => !bots.has(id));
+  return ids.length >= MIN_PLAYERS && humans.length > 0 && humans.every((id) => critters.get(id)!.ready);
 }
 
-function toFree(): void {
+function toggleReady(id: PlayerId, c: Critter): void {
+  c.ready = !c.ready;
+  hint(id, c.ready ? 'READY ✓  (A to cancel)' : READY_HINT, 40);
+}
+
+function startCountdown(): void {
+  if (phase.kind !== 'lobby' || critters.size === 0) return;
   paused = false;
-  phase = { kind: 'free' };
+  phase = { kind: 'countdown', endsAt: clock + COUNTDOWN_TIME };
   clearField();
-  hintAll('Free play', 0);
+  hintAll('Get ready…', 60);
+}
+
+function startRound(): void {
+  phase = { kind: 'round', endsAt: clock + ROUND_TIME };
+  hintAll(`Go! Most items in ${ROUND_TIME} s wins`, 150);
+}
+
+function toLobby(): void {
+  paused = false;
+  phase = { kind: 'lobby' };
+  clearField();
+  for (const [id, c] of critters) {
+    c.ready = bots.has(id);
+    if (!bots.has(id)) hint(id, READY_HINT, 0);
+  }
 }
 
 /** Zero scores, respawn everyone, empty the meadow. */
 function clearField(): void {
   const b = bounds();
+  // In the lobby, keep new spawns clear of the phone card at the bottom.
+  const maxY = phase.kind === 'lobby' ? Math.max(b.minY, Math.min(b.maxY, height - PHONE_CARD_SPACE - FEET - 30)) : b.maxY;
   for (const c of critters.values()) {
     c.score = 0;
     c.x = b.minX + Math.random() * (b.maxX - b.minX);
-    c.y = b.minY + Math.random() * (b.maxY - b.minY);
+    c.y = b.minY + Math.random() * (maxY - b.minY);
     c.hopT = -1;
     c.dashT = 0;
   }
@@ -521,62 +582,48 @@ function clearField(): void {
 }
 
 function tickPhase(): void {
-  if (phase.kind === 'round' && clock >= phase.endsAt) endRound();
-  else if (phase.kind === 'results' && clock >= phase.endsAt) phase = { kind: 'free' };
+  switch (phase.kind) {
+    case 'lobby':
+      if (allReady()) startCountdown();
+      break;
+    case 'countdown':
+      if (clock >= phase.endsAt) startRound();
+      break;
+    case 'round':
+      if (clock >= phase.endsAt) endRound();
+      break;
+    case 'results':
+      if (clock >= phase.endsAt) toLobby();
+      break;
+  }
 }
 
 function endRound(): void {
   const rows = [...critters.entries()]
-    .map(([id, c]) => ({ id, name: info(id)?.name ?? '???', score: c.score }))
+    .map(([id, c]) => ({
+      id,
+      name: info(id)?.name ?? '???',
+      animal: ANIMALS.find((a) => a.id === c.species)?.name ?? '',
+      accent: c.accent,
+      score: c.score,
+    }))
     .sort((a, b) => b.score - a.score);
+  const ranking: RankRow[] = rows.map(({ name, animal, accent, score }) => ({ name, animal, accent, score }));
+  phase = { kind: 'results', endsAt: clock + RESULTS_TIME, ranking };
   const top = rows[0]?.score ?? 0;
-  const winners = rows.filter((r) => r.score === top);
-  const text =
-    top === 0
-      ? 'Nobody collected anything!'
-      : winners.length === 1
-        ? `${winners[0]!.name} wins with ${top}!`
-        : `Tie at ${top}: ${winners.map((w) => w.name).join(', ')}`;
-  phase = { kind: 'results', endsAt: clock + RESULTS_TIME, text };
   rows.forEach((r, i) => {
-    if (bots.has(r.id)) return;
     const won = r.score === top && top > 0;
-    ctx?.sendToPlayer(r.id, { text: won ? `You win! ${r.score}` : `#${i + 1} · ${r.score}`, vibrate: won ? 200 : 60 });
+    hint(r.id, won ? `You win! ${r.score} items` : `#${i + 1} · ${r.score} items`, won ? 250 : 80);
   });
+}
+
+function hint(id: PlayerId, text: string, vibrate: number): void {
+  if (bots.has(id)) return;
+  ctx?.sendToPlayer(id, vibrate ? { text: text.slice(0, 40), vibrate } : { text: text.slice(0, 40) });
 }
 
 function hintAll(text: string, vibrate: number): void {
   ctx?.sendToAll(vibrate ? { text, vibrate } : { text });
-}
-
-function drawHud(g: CanvasRenderingContext2D): void {
-  if (phase.kind === 'round') {
-    const left = Math.max(0, Math.ceil(phase.endsAt - clock));
-    sticker(g, `${Math.floor(left / 60)}:${(left % 60).toString().padStart(2, '0')}`, width / 2, 14, '#facc15');
-  }
-  if (phase.kind === 'results') banner(g, phase.text);
-  if (paused) banner(g, 'Paused');
-}
-
-function banner(g: CanvasRenderingContext2D, text: string): void {
-  g.save();
-  g.font = '700 34px "Comic Sans MS", "Chalkboard SE", "Marker Felt", system-ui, sans-serif';
-  const w = g.measureText(text).width + 48;
-  const h = 64;
-  g.translate(width / 2, height / 2);
-  g.rotate(-0.02);
-  g.fillStyle = PAPER;
-  g.strokeStyle = INK;
-  g.lineWidth = 3;
-  g.beginPath();
-  g.roundRect(-w / 2, -h / 2, w, h, 16);
-  g.fill();
-  g.stroke();
-  g.fillStyle = INK;
-  g.textAlign = 'center';
-  g.textBaseline = 'middle';
-  g.fillText(text, 0, 1);
-  g.restore();
 }
 
 // ---------- test bots ----------
@@ -589,18 +636,25 @@ function inputFor(id: PlayerId, c: Critter): InputState {
   return { axis: botAxis(bot, c), buttons: { a: hop, b: false } };
 }
 
-/** Head for the nearest item; wander when the meadow is empty. */
+/** Head for the nearest item no other bot is after; wander when there's nothing free. */
 function botAxis(bot: Bot, c: Critter): Axis {
-  let best = Infinity;
-  for (const it of items) {
-    const d = (it.x - c.x) ** 2 + (it.y - c.y) ** 2;
-    if (d < best) {
-      best = d;
-      bot.tx = it.x;
-      bot.ty = it.y;
+  if (bot.target && !items.includes(bot.target)) bot.target = null;
+  if (!bot.target) {
+    const taken = new Set([...bots.values()].map((o) => o.target));
+    let best = Infinity;
+    for (const it of items) {
+      if (taken.has(it)) continue;
+      const d = (it.x - c.x) ** 2 + (it.y - c.y) ** 2;
+      if (d < best) {
+        best = d;
+        bot.target = it;
+      }
     }
   }
-  if (best === Infinity && (clock >= bot.retargetAt || Math.hypot(bot.tx - c.x, bot.ty - c.y) < 20)) {
+  if (bot.target) {
+    bot.tx = bot.target.x;
+    bot.ty = bot.target.y;
+  } else if (clock >= bot.retargetAt || Math.hypot(bot.tx - c.x, bot.ty - c.y) < 20) {
     const b = bounds();
     bot.tx = b.minX + Math.random() * (b.maxX - b.minX);
     bot.ty = b.minY + Math.random() * (b.maxY - b.minY);
@@ -608,7 +662,7 @@ function botAxis(bot: Bot, c: Critter): Axis {
   }
   const dist = Math.hypot(bot.tx - c.x, bot.ty - c.y);
   if (dist < 4) return { x: 0, y: 0 };
-  const k = 0.7 / dist; // a bit slower than a full stick so humans can win
+  const k = BOT_SPEED / dist;
   return { x: (bot.tx - c.x) * k, y: (bot.ty - c.y) * k };
 }
 
@@ -616,8 +670,10 @@ function addBot(): void {
   const n = ++botSeq;
   const id = `bot-${n.toString().padStart(4, '0')}`;
   const color = PLAYER_COLORS[(n + 5) % PLAYER_COLORS.length]!;
-  bots.set(id, { name: `Bot ${n}`, color, tx: 0, ty: 0, retargetAt: 0, hopAt: clock + Math.random() * 3 });
-  ensureCritter({ id, color });
+  bots.set(id, { name: `Bot ${n}`, color, tx: 0, ty: 0, retargetAt: 0, hopAt: clock + Math.random() * 3, target: null });
+  const c = ensureCritter({ id, color });
+  c.ready = true;
+  c.hasMoved = true;
 }
 
 function removeBot(): void {
@@ -639,10 +695,10 @@ function onKey(e: KeyboardEvent): void {
   if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'BUTTON')) return;
   switch (e.code) {
     case 'KeyG':
-      startRound();
+      startCountdown();
       break;
     case 'KeyR':
-      toFree();
+      toLobby();
       break;
     case 'Escape':
       togglePause();
@@ -676,16 +732,16 @@ function buildPanel(): HTMLElement {
     el.appendChild(b);
     return b;
   };
-  btnStart = mk('▶ Start', `Start a ${ROUND_TIME} s round (G)`, startRound);
+  btnStart = mk('▶ Start', `Start a ${ROUND_TIME} s round now (G)`, startCountdown);
   btnPause = mk('⏸ Pause', 'Pause / resume (Esc)', togglePause);
-  mk('↺ Reset', 'Back to free play (R)', toFree);
+  mk('↺ Reset', 'Back to the lobby (R)', toLobby);
   mk('+ Bot', 'Add a test bot (+)', addBot);
   mk('− Bot', 'Remove a test bot (−)', removeBot);
   return el;
 }
 
 function updatePanel(): void {
-  if (btnStart) btnStart.disabled = phase.kind === 'round' || critters.size === 0;
+  if (btnStart) btnStart.disabled = phase.kind !== 'lobby' || critters.size === 0;
   if (btnPause) btnPause.textContent = paused ? '▶ Resume' : '⏸ Pause';
 }
 
@@ -708,7 +764,7 @@ export const MeadowGame: GameModule = {
     lastT = 0;
     clock = 0;
     spawnCd = 0;
-    phase = { kind: 'free' };
+    phase = { kind: 'lobby' };
     paused = false;
     raf = requestAnimationFrame(frame);
   },
@@ -740,5 +796,10 @@ export const MeadowGame: GameModule = {
 
   onPlayerLeave(player: Player): void {
     critters.delete(player.id);
+  },
+
+  onPlayerConnection(player: Player): void {
+    const c = critters.get(player.id);
+    if (c && !player.connected && phase.kind === 'lobby') c.ready = false;
   },
 };
