@@ -1,13 +1,15 @@
 import type { GameModule } from '../game/GameModule';
 import { DotsGame } from './dots';
 import { MeadowGame } from './meadow';
+import { TagGame } from './tag';
 
 export const GAMES: Record<string, GameModule> = {
   dots: DotsGame,
   meadow: MeadowGame,
+  tag: TagGame,
 };
 
-export const DEFAULT_GAME = 'dots';
+export const DEFAULT_GAME = 'tag';
 
 /** Pick the game from `?game=<id>`, falling back to the default. */
 export function pickGame(): GameModule {
