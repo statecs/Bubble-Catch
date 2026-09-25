@@ -2,6 +2,10 @@
 
 **A game of tag you play on a big screen, using your phone as the controller.**
 
+> Built in a **2-hour build session** at the
+> [Stockholm | Fable 5.1 x Opus 5.5 Build Day](https://luma.com/claude-kh4r) (Claude Community,
+> Epicenter Stockholm, 25 September 2026). See [the team](#the-team) below.
+
 - **Big screen (laptop or TV):** shows the game world, with every player as a coloured dot.
 - **Phones:** each one becomes a controller with a joystick and two buttons, **A** and **B**.
 - **To join:** scan the QR code on the big screen or type the 4-letter code. No app to install.
@@ -98,3 +102,54 @@ changing the phone side.
 
 - Full game details: [apps/host/src/games/tag/README.md](apps/host/src/games/tag/README.md)
 - Developer orientation, run options and the rules: [CLAUDE.md](CLAUDE.md). Docs live in [docs/](docs).
+
+## Built at Stockholm | Fable 5.1 x Opus 5.5 Build Day 🏗️
+
+Two hours. Five people. One laptop plugged into a big screen. A lot of snacks. 🍕
+
+This whole thing came out of a **2-hour build session** at the
+[Stockholm | Fable 5.1 x Opus 5.5 Build Day](https://luma.com/claude-kh4r), a hands-on evening
+hosted by Claude Community Events at Epicenter Stockholm on Friday 25 September 2026. We went from
+an empty repo to a working party-game platform with four games, and then pitched it on stage.
+Nobody's phone was harmed. Probably.
+
+<a id="the-team"></a>
+
+### The team (a.k.a. the Party Crew 🎉)
+
+**🏛️ Måns Hellgren, The Architect**\
+[LinkedIn](https://www.linkedin.com/in/hellgrenmns/) · [GitHub](https://github.com/mnshellgren)\
+Built the architecture and the main game engine before most of us had found the Wi-Fi password.
+Got the scaffolding in place so everything *just worked* from minute one. Suspiciously calm the
+whole time.
+
+**🎨 Barbora Gustafsson, The Visual Wizard**\
+[LinkedIn](https://www.linkedin.com/in/barbora-gustafsson/) · [GitHub](https://github.com/Baragustay)\
+Brought the magic. Dreamed up the `@party/world` art package and the Meadow game, and drew the
+cat, the frog, the fox, the bunny, the duck, the pig, the penguin and the bear. Every animal in this
+game exists because of Barbora. 🐸🦊🐰
+
+**🧭 Viyan Portnoff, The Compass**\
+[LinkedIn](https://www.linkedin.com/in/starblazingunicorn/) · [GitHub](https://github.com/viyanateaa)\
+Kept pointing us in the right direction when we were about to build a fifth game instead of
+finishing the first four. Great ideas, great listener, and a steady supply of good vibes. ✨
+
+**🎤 Megha Sainath, The Stage Star (and Time Police 🚨)**\
+[LinkedIn](https://www.linkedin.com/in/megha-sainath/) · [GitHub](https://github.com/meghasainath)\
+Walked on stage in front of 100 people with about two minutes of prep and pitched like she'd
+rehearsed for weeks. Also our excellent time police: "Five minutes left!" has never sounded so
+motivating. We finished on time because of her. ⏱️
+
+**🚗 Christopher State, The Driver**\
+[LinkedIn](https://www.linkedin.com/in/state/) · [GitHub](https://github.com/statecs)\
+Behind the wheel on Git, merging everyone's work without a single tear shed (in public). Turned
+a laptop into the game host and got ngrok running so the whole room could join from their phones.
+Kept the mood positive and the scope realistic. "Yes, and... maybe after the demo." 🛞
+
+### Thank you to the hosts 💛
+
+A huge thank you to **Tom Axberg**, **Somesh Kesarla Suresh**, **Matilda Muhr Göransson** and
+**Vera Litens** for hosting the evening. Thanks also to
+[Claude Community Events](https://claude.com/community) and the Stockholm Claude Community for
+putting it together, and to **Epicenter Stockholm** for the venue. Thank you for the food, the
+drinks, the help when we got stuck, and a great evening of building! 🙌
