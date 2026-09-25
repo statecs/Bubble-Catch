@@ -10,7 +10,7 @@
 
 1. **Get ready.** Everyone runs around. Press **A** when you're ready. The game starts when everyone
    is ready (at least 2 players).
-2. **3… 2… 1…** Everyone is placed at a random spot.
+2. **5… 4… 3… 2… 1…** Everyone is placed at a random spot while the rules show on screen.
 3. **One player becomes IT** and turns green.
 4. **IT chases everyone.** Anyone IT touches gets infected, turns green too, and starts chasing the
    others. The green team keeps growing.
