@@ -36,3 +36,5 @@ export const MyGame: GameModule = {
 - `apps/host/src/games/dots/` — minimal: one dot per player, joystick moves it. Copy it to start a new game.
 - `apps/host/src/games/tag/` — the real thing (default game): phases (ready-up lobby → countdown → play →
   results), a `config.ts` of tunables, floor powerups, dash on B, phone hints via `PlayerUi`. Host keys: G start, R reset.
+- `apps/host/src/games/paint/` — Paint to Conquer (`?game=paint`): trails on an offscreen canvas plus an
+  ownership grid for scoring, World of Goo-style blobs. Shows how a game can own heavier rendering.
