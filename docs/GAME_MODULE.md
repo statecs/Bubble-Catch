@@ -1,7 +1,9 @@
 # Game modules
 
 Interface: `apps/host/src/game/GameModule.ts`. Runtime: `apps/host/src/game/runtime.ts`. Both frozen.
-Games live in `apps/host/src/games/<id>/index.ts` and are registered in `apps/host/src/games/index.ts`.
+Games live in `apps/host/src/games/<id>/index.ts` and are registered in `apps/host/src/games/index.ts`:
+add the module to `GAMES`, and a card (name, one-line blurb, `preview.jpg` in your game folder) to
+`GAME_CARDS` so it shows up in the host's game picker.
 Select with `?game=<id>` on the host URL.
 
 ## What you implement
@@ -34,7 +36,7 @@ export const MyGame: GameModule = {
 
 ## Reference implementations
 - `apps/host/src/games/dots/` — minimal: one dot per player, joystick moves it. Copy it to start a new game.
-- `apps/host/src/games/tag/` — the real thing (default game): phases (ready-up lobby → countdown → play →
+- `apps/host/src/games/tag/` — the real thing: phases (ready-up lobby → countdown → play →
   results), a `config.ts` of tunables, floor powerups, dash on B, phone hints via `PlayerUi`. Host keys: G start, R reset.
 - `apps/host/src/games/paint/` — Paint to Conquer (`?game=paint`): trails on an offscreen canvas plus an
   ownership grid for scoring, World of Goo-style blobs. Shows how a game can own heavier rendering.

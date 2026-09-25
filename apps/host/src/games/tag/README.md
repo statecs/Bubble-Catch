@@ -1,6 +1,6 @@
 # Tag / Infection
 
-The default game (`?game=tag`). One player starts as **IT**. Everyone IT touches gets infected
+Pick it on the host's start screen, or open `/host/?game=tag`. One player starts as **IT**. Everyone IT touches gets infected
 and joins their team. Survivors win if at least one of them is still clean when the clock runs out.
 
 ## Controls (phone)
