@@ -2,11 +2,13 @@ import type { GameModule } from '../game/GameModule';
 import { DotsGame } from './dots';
 import { MeadowGame } from './meadow';
 import { TagGame } from './tag';
+import { PaintGame } from './paint';
 
 export const GAMES: Record<string, GameModule> = {
   dots: DotsGame,
   meadow: MeadowGame,
   tag: TagGame,
+  paint: PaintGame,
 };
 
 export const DEFAULT_GAME = 'tag';
