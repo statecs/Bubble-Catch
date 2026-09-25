@@ -38,6 +38,53 @@ npm run tunnel                 # optional: ngrok link so phones on mobile data c
 Players on the same Wi-Fi scan the QR code on the big screen. Open the host page with your
 machine's network IP, not `localhost`, so the QR code works on phones.
 
+## Play over the internet (ngrok)
+
+Use this when players aren't on your Wi-Fi (phones on mobile data, or a network that blocks
+devices from talking to each other). ngrok gives your machine a public `https://` link.
+
+### One-time setup: your own ngrok account
+
+1. **Install ngrok:** `brew install ngrok` on macOS, or download it from https://ngrok.com/download.
+2. **Sign up** at https://dashboard.ngrok.com/signup (the free plan is enough).
+3. **Verify your email.** Check your inbox, or resend the verification email from
+   https://dashboard.ngrok.com/user/settings. Until you do, ngrok refuses to start with
+   `ERR_NGROK_123`.
+4. **Connect ngrok to your account.** Copy your authtoken from
+   https://dashboard.ngrok.com/get-started/your-authtoken and run:
+   ```bash
+   ngrok config add-authtoken <your-token>
+   ```
+   This saves the token in ngrok's own config file on your machine, not in this repo. Never commit
+   or share your token. If it leaks, reset it in the dashboard and run the command again.
+
+Check it with `ngrok config check`.
+
+### Start a game
+
+```bash
+npm run build && npm start     # terminal 1: game server on port 8787
+npm run tunnel                 # terminal 2: prints https://<something>.ngrok-free.app (or .dev)
+```
+
+- **Big screen:** open `https://<your-ngrok-url>/host/`. The QR code points at the tunnel automatically.
+- **Players:** scan the QR code, or open `https://<your-ngrok-url>/` and type the join code.
+- **Browser warning:** the free plan shows a one-time "You are about to visit…" page on each
+  device. Tap **Visit Site**.
+
+### Good to know
+
+- **Your link can change.** On some free accounts the link is different every time you restart
+  `npm run tunnel`. To keep the same link, use the free static domain listed at
+  https://dashboard.ngrok.com/domains:
+  `ngrok http 8787 --domain=<your-domain>` (newer ngrok versions call this flag `--url`).
+- **QR still shows an old link?** Open the host once with
+  `?controller=https://<your-ngrok-url>/` added to the URL. The big screen remembers it.
+- **While developing** (`npm run dev`), use `npm run tunnel:dev` instead. It tunnels the phone app on
+  port 5174. Then open the host at `http://localhost:5173/?controller=https://<your-ngrok-url>/`.
+- **To stop:** press `Ctrl+C` in the tunnel terminal. Anyone with the link can reach your game
+  while the tunnel is running, but only the game, nothing else on your machine.
+
 ## Behind the scenes
 
 - **The phones only send your moves.**
