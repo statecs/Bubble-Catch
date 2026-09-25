@@ -2,8 +2,11 @@
  * Meadow: hand-drawn visual showcase. Each player is a distinct animal walking
  * around a pastel meadow collecting bubbles, leaves, berries and flowers.
  * Stick = walk, A = hop, B = dash. All art comes from @party/world.
+ *
+ * Free play by default. Host controls (panel top-right + keys): G start a timed round
+ * (most items wins), Esc pause/resume, R reset to free play, +/− test bots.
  */
-import { ZERO_INPUT, type Player, type PlayerId } from '@party/contract';
+import { PLAYER_COLORS, ZERO_INPUT, type Axis, type InputState, type Player, type PlayerId } from '@party/contract';
 import {
   ANIMALS,
   ANIMAL_BODY_Y,
@@ -39,6 +42,30 @@ const PUFF_TIME = 0.5;
 const COLLECT_DIST = ANIMAL_SIZE * 0.3 + ITEM_SIZE * 0.3;
 const SPAWN_EVERY = 0.7; // s between spawns while below target
 const FEET = ANIMAL_SIZE * (ANIMAL_FEET_Y - 0.5); // sprite centre -> soles
+const ROUND_TIME = 60; // s
+const RESULTS_TIME = 6; // s the winner banner shows before free play resumes
+const BOT_RETARGET = 2.5; // s between a bot's wander targets when there's nothing to collect
+
+/** What the game needs to know about a player: real (from the roster) or a test bot. */
+interface Who {
+  name: string;
+  color: string;
+  connected: boolean;
+}
+
+interface Bot {
+  name: string;
+  color: string;
+  tx: number;
+  ty: number;
+  retargetAt: number;
+  hopAt: number;
+}
+
+type Phase =
+  | { kind: 'free' }
+  | { kind: 'round'; endsAt: number }
+  | { kind: 'results'; endsAt: number; text: string };
 
 interface Critter {
   species: Species;
@@ -100,6 +127,19 @@ const critters = new Map<PlayerId, Critter>();
 let items: Item[] = [];
 let pops: Pop[] = [];
 let puffs: Puff[] = [];
+let phase: Phase = { kind: 'free' };
+let paused = false;
+const bots = new Map<PlayerId, Bot>();
+let botSeq = 0;
+let panel: HTMLElement | null = null;
+let btnStart: HTMLButtonElement | null = null;
+let btnPause: HTMLButtonElement | null = null;
+
+function info(id: PlayerId): Who | undefined {
+  const bot = bots.get(id);
+  if (bot) return { name: bot.name, color: bot.color, connected: true };
+  return ctx?.players.get(id);
+}
 
 function clamp(v: number, lo: number, hi: number): number {
   return v < lo ? lo : v > hi ? hi : v;
@@ -130,7 +170,7 @@ function pickSpecies(): { species: Species; round: number } {
   return { species: best.id, round: bestCount };
 }
 
-function ensureCritter(player: Player): Critter {
+function ensureCritter(player: { id: PlayerId; color: string }): Critter {
   let c = critters.get(player.id);
   if (c) return c;
   const { species, round } = pickSpecies();
@@ -213,8 +253,7 @@ function update(dt: number): void {
   const b = bounds();
 
   for (const [id, c] of critters) {
-    const player = ctx.players.get(id);
-    const input = player?.connected ? (ctx.inputs.get(id) ?? ZERO_INPUT) : ZERO_INPUT;
+    const input = inputFor(id, c);
     const { a, b: bBtn } = input.buttons;
 
     if (a && !c.prevA && c.hopT < 0) c.hopT = 0;
@@ -250,7 +289,7 @@ function update(dt: number): void {
   }
 
   // collectibles: spawn toward target, drift, collect
-  const connected = [...ctx.players.values()].filter((p) => p.connected).length;
+  const connected = [...ctx.players.values()].filter((p) => p.connected).length + bots.size;
   const target = 3 + connected;
   spawnCd -= dt;
   if (items.length < target && spawnCd <= 0 && width > 0) {
@@ -272,12 +311,12 @@ function update(dt: number): void {
   items = items.filter((it) => {
     if (it.age < 0.3) return true; // let it finish appearing
     for (const [id, c] of critters) {
-      if (!ctx!.players.get(id)?.connected) continue;
+      if (!info(id)?.connected) continue;
       if (Math.hypot(c.x - it.x, c.y - it.y) > COLLECT_DIST) continue;
       c.score += 1;
       c.happyT = HAPPY_TIME;
       pops.push({ kind: it.kind, x: it.x, y: it.y, t: 0, seed: Math.floor(Math.random() * 1e6) });
-      ctx!.sendToPlayer(id, { text: `${COLLECTIBLE_EMOJI[it.kind]} ${c.score}`, vibrate: 40 });
+      if (!bots.has(id)) ctx!.sendToPlayer(id, { text: `${COLLECTIBLE_EMOJI[it.kind]} ${c.score}`, vibrate: 40 });
       return false;
     }
     return true;
@@ -326,7 +365,7 @@ function sticker(g: CanvasRenderingContext2D, text: string, x: number, y: number
 }
 
 function drawCritter(g: CanvasRenderingContext2D, id: PlayerId, c: Critter): void {
-  const player = ctx?.players.get(id);
+  const player = info(id);
   if (!player) return;
   const pose = poseOf(c);
   const sprite = sprites.get(`${c.species}|${c.body ?? ''}|${c.accent}|${pose}`, ANIMAL_SIZE, ANIMAL_SIZE, dpr, (sg, w) =>
@@ -418,14 +457,18 @@ function frame(now: number): void {
   if (!ctx || !g2d) return;
   const dt = lastT ? Math.min(0.1, (now - lastT) / 1000) : 0;
   lastT = now;
-  clock += dt;
 
   // Keep critters in sync with the roster (covers setRoster after a room reclaim,
   // which does not fire onPlayerJoin).
   for (const p of ctx.players.values()) if (!critters.has(p.id)) ensureCritter(p);
-  for (const id of critters.keys()) if (!ctx.players.has(id)) critters.delete(id);
+  for (const id of critters.keys()) if (!ctx.players.has(id) && !bots.has(id)) critters.delete(id);
 
-  update(dt);
+  if (!paused) {
+    clock += dt;
+    update(dt);
+    tickPhase();
+  }
+  updatePanel();
 
   const g = g2d;
   if (background) g.drawImage(background, 0, 0, width, height);
@@ -441,6 +484,209 @@ function frame(now: number): void {
   for (const d of drawables) d.draw();
 
   for (const p of pops) drawPop(g, p.kind, p.x, p.y, ITEM_SIZE, p.t, p.seed);
+  drawHud(g);
+}
+
+// ---------- rounds ----------
+
+function startRound(): void {
+  if (critters.size === 0) return;
+  paused = false;
+  phase = { kind: 'round', endsAt: clock + ROUND_TIME };
+  clearField();
+  hintAll(`Go! Most items in ${ROUND_TIME} s wins`, 80);
+}
+
+function toFree(): void {
+  paused = false;
+  phase = { kind: 'free' };
+  clearField();
+  hintAll('Free play', 0);
+}
+
+/** Zero scores, respawn everyone, empty the meadow. */
+function clearField(): void {
+  const b = bounds();
+  for (const c of critters.values()) {
+    c.score = 0;
+    c.x = b.minX + Math.random() * (b.maxX - b.minX);
+    c.y = b.minY + Math.random() * (b.maxY - b.minY);
+    c.hopT = -1;
+    c.dashT = 0;
+  }
+  items = [];
+  pops = [];
+  puffs = [];
+  spawnCd = 0;
+}
+
+function tickPhase(): void {
+  if (phase.kind === 'round' && clock >= phase.endsAt) endRound();
+  else if (phase.kind === 'results' && clock >= phase.endsAt) phase = { kind: 'free' };
+}
+
+function endRound(): void {
+  const rows = [...critters.entries()]
+    .map(([id, c]) => ({ id, name: info(id)?.name ?? '???', score: c.score }))
+    .sort((a, b) => b.score - a.score);
+  const top = rows[0]?.score ?? 0;
+  const winners = rows.filter((r) => r.score === top);
+  const text =
+    top === 0
+      ? 'Nobody collected anything!'
+      : winners.length === 1
+        ? `${winners[0]!.name} wins with ${top}!`
+        : `Tie at ${top}: ${winners.map((w) => w.name).join(', ')}`;
+  phase = { kind: 'results', endsAt: clock + RESULTS_TIME, text };
+  rows.forEach((r, i) => {
+    if (bots.has(r.id)) return;
+    const won = r.score === top && top > 0;
+    ctx?.sendToPlayer(r.id, { text: won ? `You win! ${r.score}` : `#${i + 1} · ${r.score}`, vibrate: won ? 200 : 60 });
+  });
+}
+
+function hintAll(text: string, vibrate: number): void {
+  ctx?.sendToAll(vibrate ? { text, vibrate } : { text });
+}
+
+function drawHud(g: CanvasRenderingContext2D): void {
+  if (phase.kind === 'round') {
+    const left = Math.max(0, Math.ceil(phase.endsAt - clock));
+    sticker(g, `${Math.floor(left / 60)}:${(left % 60).toString().padStart(2, '0')}`, width / 2, 14, '#facc15');
+  }
+  if (phase.kind === 'results') banner(g, phase.text);
+  if (paused) banner(g, 'Paused');
+}
+
+function banner(g: CanvasRenderingContext2D, text: string): void {
+  g.save();
+  g.font = '700 34px "Comic Sans MS", "Chalkboard SE", "Marker Felt", system-ui, sans-serif';
+  const w = g.measureText(text).width + 48;
+  const h = 64;
+  g.translate(width / 2, height / 2);
+  g.rotate(-0.02);
+  g.fillStyle = PAPER;
+  g.strokeStyle = INK;
+  g.lineWidth = 3;
+  g.beginPath();
+  g.roundRect(-w / 2, -h / 2, w, h, 16);
+  g.fill();
+  g.stroke();
+  g.fillStyle = INK;
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  g.fillText(text, 0, 1);
+  g.restore();
+}
+
+// ---------- test bots ----------
+
+function inputFor(id: PlayerId, c: Critter): InputState {
+  const bot = bots.get(id);
+  if (!bot) return info(id)?.connected ? (ctx?.inputs.get(id) ?? ZERO_INPUT) : ZERO_INPUT;
+  const hop = clock >= bot.hopAt;
+  if (hop) bot.hopAt = clock + 2 + Math.random() * 4;
+  return { axis: botAxis(bot, c), buttons: { a: hop, b: false } };
+}
+
+/** Head for the nearest item; wander when the meadow is empty. */
+function botAxis(bot: Bot, c: Critter): Axis {
+  let best = Infinity;
+  for (const it of items) {
+    const d = (it.x - c.x) ** 2 + (it.y - c.y) ** 2;
+    if (d < best) {
+      best = d;
+      bot.tx = it.x;
+      bot.ty = it.y;
+    }
+  }
+  if (best === Infinity && (clock >= bot.retargetAt || Math.hypot(bot.tx - c.x, bot.ty - c.y) < 20)) {
+    const b = bounds();
+    bot.tx = b.minX + Math.random() * (b.maxX - b.minX);
+    bot.ty = b.minY + Math.random() * (b.maxY - b.minY);
+    bot.retargetAt = clock + BOT_RETARGET;
+  }
+  const dist = Math.hypot(bot.tx - c.x, bot.ty - c.y);
+  if (dist < 4) return { x: 0, y: 0 };
+  const k = 0.7 / dist; // a bit slower than a full stick so humans can win
+  return { x: (bot.tx - c.x) * k, y: (bot.ty - c.y) * k };
+}
+
+function addBot(): void {
+  const n = ++botSeq;
+  const id = `bot-${n.toString().padStart(4, '0')}`;
+  const color = PLAYER_COLORS[(n + 5) % PLAYER_COLORS.length]!;
+  bots.set(id, { name: `Bot ${n}`, color, tx: 0, ty: 0, retargetAt: 0, hopAt: clock + Math.random() * 3 });
+  ensureCritter({ id, color });
+}
+
+function removeBot(): void {
+  const last = [...bots.keys()].pop();
+  if (!last) return;
+  bots.delete(last);
+  critters.delete(last);
+}
+
+// ---------- host controls ----------
+
+function togglePause(): void {
+  paused = !paused;
+  hintAll(paused ? 'Paused' : 'Go!', paused ? 0 : 60);
+}
+
+function onKey(e: KeyboardEvent): void {
+  const t = e.target as HTMLElement | null;
+  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'BUTTON')) return;
+  switch (e.code) {
+    case 'KeyG':
+      startRound();
+      break;
+    case 'KeyR':
+      toFree();
+      break;
+    case 'Escape':
+      togglePause();
+      break;
+    case 'Equal':
+    case 'NumpadAdd':
+      addBot();
+      break;
+    case 'Minus':
+    case 'NumpadSubtract':
+      removeBot();
+      break;
+  }
+}
+
+function buildPanel(): HTMLElement {
+  const el = document.createElement('div');
+  el.style.cssText =
+    'position:absolute;top:10px;right:10px;display:flex;gap:6px;z-index:2;font:600 13px system-ui,sans-serif;';
+  const mk = (label: string, title: string, onClick: () => void) => {
+    const b = document.createElement('button');
+    b.textContent = label;
+    b.title = title;
+    b.style.cssText =
+      'background:rgba(30,41,59,.9);color:#e2e8f0;border:1px solid rgba(148,163,184,.35);border-radius:8px;padding:6px 10px;cursor:pointer;';
+    b.addEventListener('click', (ev) => {
+      ev.preventDefault();
+      onClick();
+      b.blur();
+    });
+    el.appendChild(b);
+    return b;
+  };
+  btnStart = mk('▶ Start', `Start a ${ROUND_TIME} s round (G)`, startRound);
+  btnPause = mk('⏸ Pause', 'Pause / resume (Esc)', togglePause);
+  mk('↺ Reset', 'Back to free play (R)', toFree);
+  mk('+ Bot', 'Add a test bot (+)', addBot);
+  mk('− Bot', 'Remove a test bot (−)', removeBot);
+  return el;
+}
+
+function updatePanel(): void {
+  if (btnStart) btnStart.disabled = phase.kind === 'round' || critters.size === 0;
+  if (btnPause) btnPause.textContent = paused ? '▶ Resume' : '⏸ Pause';
 }
 
 export const MeadowGame: GameModule = {
@@ -456,9 +702,14 @@ export const MeadowGame: GameModule = {
     ro = new ResizeObserver(resize);
     ro.observe(c.container);
     resize();
+    panel = buildPanel();
+    c.container.appendChild(panel);
+    window.addEventListener('keydown', onKey);
     lastT = 0;
     clock = 0;
     spawnCd = 0;
+    phase = { kind: 'free' };
+    paused = false;
     raf = requestAnimationFrame(frame);
   },
 
@@ -467,6 +718,10 @@ export const MeadowGame: GameModule = {
     raf = 0;
     ro?.disconnect();
     ro = null;
+    window.removeEventListener('keydown', onKey);
+    panel?.remove();
+    panel = btnStart = btnPause = null;
+    bots.clear();
     canvas?.remove();
     canvas = null;
     g2d = null;
