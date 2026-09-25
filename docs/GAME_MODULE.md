@@ -32,6 +32,7 @@ export const MyGame: GameModule = {
 - Typecheck: `npm run typecheck -w apps/host`. Test alone: `http://localhost:5173/?mock=1&game=<id>`
   (WASD / arrows drive two fake players, `p` toggles player 2 away/back).
 
-## Reference implementation
-`apps/host/src/games/dots/` — one coloured dot per player, joystick moves it, A draws a ring, B shrinks.
-Copy it to start a new game.
+## Reference implementations
+- `apps/host/src/games/dots/` — minimal: one dot per player, joystick moves it. Copy it to start a new game.
+- `apps/host/src/games/tag/` — the real thing (default game): phases (ready-up lobby → countdown → play →
+  results), a `config.ts` of tunables, floor powerups, dash on B, phone hints via `PlayerUi`. Host keys: G start, R reset.
