@@ -2,9 +2,10 @@
 
 Browser party game platform. Phones are controllers (joystick + 2 buttons), a big screen
 ("host") renders the shared world, a tiny relay server forwards messages. This repo is the
-platform plus four game modules in `apps/host/src/games/`: **tag** (Tag / Infection, the default),
+platform plus four game modules in `apps/host/src/games/`: **tag** (Tag / Infection),
 **meadow** (animals collecting items), **paint** (Paint to Conquer) and **dots** (minimal demo).
-Tag, Meadow and Paint each have a README in their folder; `?game=<id>` picks a game.
+Tag, Meadow and Paint each have a README in their folder. The host opens on a game picker
+(`apps/host/src/picker.ts`); `?game=<id>` skips it.
 
 ## Run it
 
@@ -23,7 +24,8 @@ Or in dev: `npm run tunnel:dev` (tunnels the controller dev server, 5174, which 
 the host with `?controller=https://xxx.ngrok.app/` once so the QR points at the tunnel (it's remembered).
 
 Useful URLs / flags:
-- host `?mock=1` — no server; two keyboard players (WASD / arrows). `?game=<id>` picks a game module.
+- host `?mock=1` — no server; two keyboard players (WASD / arrows). `?game=<id>` picks a game module
+  (without it the host shows the game picker).
 - controller `?mock=1` — no server; shows the pad and logs what it would send. `?code=ABCD` prefills.
 - `npm run fake:host` / `npm run fake:controller -- ABCD Alice` — relay-level fakes, see docs/TESTING.md.
 

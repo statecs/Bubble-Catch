@@ -49,7 +49,10 @@ export function controllerJoinUrl(base: string, code: JoinCode): string {
 }
 
 export interface LobbyOptions {
-  gameName: string;
+  /** Current game's name, or null while the host is still picking. */
+  gameName: string | null;
+  /** Shows a "Change game" button; called after the host confirms (second click). */
+  onChangeGame?: () => void;
   /** Mock mode: no QR, show key legend instead. */
   mock?: { legend: ReadonlyArray<{ name: string; keys: string }> };
 }
@@ -57,7 +60,7 @@ export interface LobbyOptions {
 export interface Lobby {
   setCode(code: JoinCode | undefined): void;
   setStatus(status: SocketStatus | 'mock'): void;
-  setGameName(name: string): void;
+  setGameName(name: string | null): void;
   destroy(): void;
 }
 
@@ -105,6 +108,34 @@ export function renderLobby(root: HTMLElement, runtime: GameRuntime, opts: Lobby
   const gameLabel = el('div', 'game-label');
   root.append(playersHead, list, gameLabel);
 
+  // Two clicks so a stray click doesn't throw away a round in progress.
+  let changeBtn: HTMLButtonElement | null = null;
+  if (opts.onChangeGame) {
+    const onChange = opts.onChangeGame;
+    const btn = el('button', 'change-game', '⇄ Change game');
+    let armedUntil = 0;
+    let disarm = 0;
+    btn.addEventListener('click', () => {
+      if (Date.now() < armedUntil) {
+        armedUntil = 0;
+        clearTimeout(disarm);
+        btn.textContent = '⇄ Change game';
+        btn.classList.remove('armed');
+        onChange();
+        return;
+      }
+      armedUntil = Date.now() + 3000;
+      btn.textContent = 'Click again to leave this game';
+      btn.classList.add('armed');
+      disarm = window.setTimeout(() => {
+        btn.textContent = '⇄ Change game';
+        btn.classList.remove('armed');
+      }, 3000);
+    });
+    root.append(btn);
+    changeBtn = btn;
+  }
+
   const renderRoster = () => {
     const players = [...runtime.players.values()];
     const online = players.filter((p) => p.connected).length;
@@ -150,7 +181,8 @@ export function renderLobby(root: HTMLElement, runtime: GameRuntime, opts: Lobby
       status.textContent = s === 'open' ? 'relay: connected' : s === 'connecting' ? 'relay: connecting…' : s === 'mock' ? 'mock room' : 'relay: offline';
     },
     setGameName(name) {
-      gameLabel.textContent = `game: ${name}`;
+      gameLabel.textContent = name ? `game: ${name}` : 'game: picking…';
+      if (changeBtn) changeBtn.hidden = name === null;
     },
     destroy() {
       offRoster();

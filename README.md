@@ -12,12 +12,16 @@
 
 ## The games
 
-Four games, same phones. Every game has a ready-up lobby, a countdown, a timed round and a results
-screen, plus host buttons (Start, Pause, Reset, add/remove test bots) in the top-right corner.
+Four games, same phones. When you open the host page on the big screen you get a **game picker**:
+click a game (or press 1–4) while players scan the QR code and join. **⇄ Change game** in the
+sidebar takes you back to the picker at any time, and everyone stays in the room.
 
-| Game | How you win | Open it with |
+Every game has a ready-up lobby, a countdown, a timed round and a results screen, plus host buttons
+(Start, Pause, Reset, add/remove test bots) in the top-right corner.
+
+| Game | How you win | Skip the picker with |
 |---|---|---|
-| **Tag / Infection** (default) | One player is IT and infects everyone they touch. Survive 90 seconds. | `/host/` |
+| **Tag / Infection** | One player is IT and infects everyone they touch. Survive 90 seconds. | `/host/?game=tag` |
 | **Meadow** | Be a hand-drawn animal and collect the most bubbles, leaves, berries and flowers in 60 seconds. | `/host/?game=meadow` |
 | **Paint to Conquer** | Be a goo blob that paints the floor. Own the most floor when time runs out. | `/host/?game=paint` |
 | **Dots** | No winner: the tiny demo game that proves phones → screen works. | `/host/?game=dots` |
@@ -30,7 +34,7 @@ Full guides: [Tag](apps/host/src/games/tag/README.md) ·
 [Meadow](apps/host/src/games/meadow/README.md) ·
 [Paint to Conquer](apps/host/src/games/paint/README.md)
 
-## How to play Tag (the default game)
+## How to play Tag
 
 1. **Get ready.** Everyone runs around. Press **A** when you're ready. The game starts when everyone
    is ready (at least 2 players).
@@ -55,7 +59,7 @@ Full guides: [Tag](apps/host/src/games/tag/README.md) ·
 
 ```bash
 npm install
-npm run build && npm start     # open http://<your-ip>:8787/host/ on the big screen
+npm run build && npm start     # open http://<your-ip>:8787/host/ on the big screen, pick a game
 npm run tunnel                 # optional: ngrok link so phones on mobile data can join
 ```
 
@@ -91,7 +95,7 @@ npm run build && npm start     # terminal 1: game server on port 8787
 npm run tunnel                 # terminal 2: prints https://<something>.ngrok-free.app (or .dev)
 ```
 
-- **Big screen:** open `https://<your-ngrok-url>/host/`. The QR code points at the tunnel automatically.
+- **Big screen:** open `https://<your-ngrok-url>/host/` and pick a game. The QR code points at the tunnel automatically.
 - **Players:** scan the QR code, or open `https://<your-ngrok-url>/` and type the join code.
 - **Browser warning:** the free plan shows a one-time "You are about to visit…" page on each
   device. Tap **Visit Site**.
