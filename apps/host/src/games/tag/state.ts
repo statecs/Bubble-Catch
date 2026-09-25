@@ -8,6 +8,10 @@ export interface Ent {
   /** Last non-zero stick direction, used for dashing while standing still. */
   faceX: number;
   faceY: number;
+  /** Onboarding: becomes true the first time the stick moves. */
+  hasMoved: boolean;
+  /** Present for host-spawned test bots (not real players). */
+  bot?: { name: string; color: string; tx: number; ty: number; retargetAt: number };
   ready: boolean;
   infected: boolean;
   /** True for the player picked as "it" at round start. */
@@ -42,6 +46,13 @@ export interface RankRow {
   wasIt: boolean;
 }
 
+/** Name/colour/connection for anything on the floor: real players come from ctx.players, bots from the game. */
+export interface EntInfo {
+  name: string;
+  color: string;
+  connected: boolean;
+}
+
 export type Phase =
   | { kind: 'lobby' }
   | { kind: 'countdown'; endsAt: number }
@@ -55,6 +66,7 @@ export function newEnt(id: PlayerId, x: number, y: number): Ent {
     y,
     faceX: 1,
     faceY: 0,
+    hasMoved: false,
     ready: false,
     infected: false,
     wasIt: false,

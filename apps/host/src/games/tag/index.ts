@@ -6,15 +6,18 @@
  * Survivors win if anyone is left when time runs out. Powerups spawn on the floor.
  * B = dash (short burst, cooldown). Late joiners during a round spawn infected.
  *
- * Host keyboard: G = start now (lobby), R = reset to lobby.
+ * Host controls (panel top-right + keys): G start now, Esc pause/resume, R reset, +/− test bots.
+ * The game runs on its own clock (`this.clock`) which stops while paused.
  */
-import { ZERO_INPUT, type Buttons, type Player, type PlayerId } from '@party/contract';
+import { PLAYER_COLORS, ZERO_INPUT, type Axis, type Buttons, type Player, type PlayerId } from '@party/contract';
 import type { GameContext, GameModule } from '../../game/GameModule';
 import { CFG, INFECTED_COLOR, POWERUPS, type PowerupKind } from './config';
 import { render } from './render';
-import { newEnt, resetForLobby, type Ent, type Phase, type Powerup, type RankRow } from './state';
+import { newEnt, resetForLobby, type Ent, type EntInfo, type Phase, type Powerup, type RankRow } from './state';
 
 const POWERUP_KINDS: PowerupKind[] = ['speed', 'shield', 'freeze'];
+const JOIN_HINT = 'Stick = move · A = ready · B = dash';
+const READY_HINT = 'Press A when ready · B = dash';
 
 class Tag implements GameModule {
   readonly id = 'tag';
@@ -23,27 +26,35 @@ class Tag implements GameModule {
   private ctx: GameContext | null = null;
   private canvas: HTMLCanvasElement | null = null;
   private g: CanvasRenderingContext2D | null = null;
+  private panel: HTMLElement | null = null;
   private ro: ResizeObserver | null = null;
   private raf = 0;
   private lastT = 0;
   private width = 0;
   private height = 0;
 
+  /** Game time in ms. Advances only while not paused. */
+  private clock = 0;
+  private paused = false;
   private phase: Phase = { kind: 'lobby' };
   private ents = new Map<PlayerId, Ent>();
   private powerups: Powerup[] = [];
   private nextPowerupAt = 0;
   private prevButtons = new Map<PlayerId, Buttons>();
+  private botSeq = 0;
   private readonly onKey = (e: KeyboardEvent) => this.handleKey(e);
 
   // ---------- lifecycle ----------
 
   mount(ctx: GameContext): void {
     this.ctx = ctx;
+    ctx.container.style.position = 'relative';
     this.canvas = document.createElement('canvas');
     this.canvas.style.display = 'block';
     ctx.container.appendChild(this.canvas);
     this.g = this.canvas.getContext('2d');
+    this.panel = this.buildPanel();
+    ctx.container.appendChild(this.panel);
     this.ro = new ResizeObserver(() => this.resize());
     this.ro.observe(ctx.container);
     this.resize();
@@ -58,22 +69,24 @@ class Tag implements GameModule {
     window.removeEventListener('keydown', this.onKey);
     this.ro?.disconnect();
     this.canvas?.remove();
-    this.ro = this.canvas = this.g = this.ctx = null;
+    this.panel?.remove();
+    if (this.ctx) this.ctx.container.style.position = '';
+    this.ro = this.canvas = this.g = this.panel = this.ctx = null;
     this.ents.clear();
     this.powerups = [];
     this.prevButtons.clear();
     this.phase = { kind: 'lobby' };
+    this.paused = false;
   }
 
   onPlayerJoin(player: Player): void {
     const e = this.ensureEnt(player.id);
     if (this.phase.kind === 'play' || this.phase.kind === 'countdown') {
-      // Joining mid-round: you're on the infected team, no free win.
       e.infected = true;
-      e.graceUntil = performance.now() + CFG.infectGraceMs;
-      this.hint(player.id, 'Round in progress: you start infected. Tag them!', 120, INFECTED_COLOR);
+      e.graceUntil = this.clock + CFG.infectGraceMs;
+      this.hint(e, 'Round in progress: you start infected. Tag!', 120, INFECTED_COLOR);
     } else {
-      this.hint(player.id, 'Press A when ready · B = dash', 80);
+      this.hint(e, JOIN_HINT, 80);
     }
   }
 
@@ -89,32 +102,50 @@ class Tag implements GameModule {
 
   // ---------- loop ----------
 
-  private frame(now: number): void {
+  private frame(wall: number): void {
     this.raf = requestAnimationFrame((t) => this.frame(t));
     if (!this.ctx || !this.g) return;
-    const dt = this.lastT ? Math.min(0.1, (now - this.lastT) / 1000) : 0;
-    this.lastT = now;
+    const dt = this.lastT ? Math.min(0.1, (wall - this.lastT) / 1000) : 0;
+    this.lastT = wall;
 
-    this.readButtons(now);
-    this.move(now, dt);
-    this.tickPhase(now);
+    if (!this.paused) {
+      this.clock += dt * 1000;
+      const now = this.clock;
+      this.readButtons(now);
+      this.move(now, dt);
+      this.tickPhase(now);
+    }
 
     render({
       g: this.g,
       width: this.width,
       height: this.height,
-      now,
+      now: this.clock,
       phase: this.phase,
+      paused: this.paused,
       ents: this.ents,
-      players: this.ctx.players,
+      info: (id) => this.info(id),
       powerups: this.powerups,
     });
+    this.updatePanel();
+  }
+
+  private info(id: PlayerId): EntInfo | undefined {
+    const e = this.ents.get(id);
+    if (e?.bot) return { name: e.bot.name, color: e.bot.color, connected: true };
+    return this.ctx?.players.get(id);
+  }
+
+  private axisFor(e: Ent, now: number): Axis {
+    if (e.bot) return this.botAxis(e, now);
+    return (this.ctx?.inputs.get(e.id) ?? ZERO_INPUT).axis;
   }
 
   /** Button edge detection: A = ready toggle (lobby), B = dash. */
   private readButtons(now: number): void {
     if (!this.ctx) return;
     for (const e of this.ents.values()) {
+      if (e.bot) continue;
       const cur = (this.ctx.inputs.get(e.id) ?? ZERO_INPUT).buttons;
       const prev = this.prevButtons.get(e.id) ?? ZERO_INPUT.buttons;
       if (cur.a && !prev.a && this.phase.kind === 'lobby') this.toggleReady(e);
@@ -125,18 +156,22 @@ class Tag implements GameModule {
 
   private move(now: number, dt: number): void {
     if (!this.ctx) return;
-    const canMove = this.phase.kind === 'lobby' || this.phase.kind === 'play';
-    if (!canMove) return;
+    if (this.phase.kind !== 'lobby' && this.phase.kind !== 'play') return;
     const R = CFG.radius;
     for (const e of this.ents.values()) {
       if (e.frozenUntil > now) continue;
-      const axis = (this.ctx.inputs.get(e.id) ?? ZERO_INPUT).axis;
+      const axis = this.axisFor(e, now);
       const mag = Math.hypot(axis.x, axis.y);
       if (mag > 0.2) {
         e.faceX = axis.x / mag;
         e.faceY = axis.y / mag;
+        if (!e.hasMoved && !e.bot) {
+          e.hasMoved = true;
+          if (this.phase.kind === 'lobby') this.hint(e, 'Nice! ' + READY_HINT, 40);
+        }
       }
       let speed = CFG.speed;
+      if (e.bot) speed *= CFG.bot.speedMult;
       if (e.infected) speed *= CFG.infectedSpeedMult;
       if (e.speedUntil > now) speed *= CFG.powerup.speedMult;
       let vx = axis.x;
@@ -178,21 +213,22 @@ class Tag implements GameModule {
   }
 
   private connectedEnts(): Ent[] {
-    if (!this.ctx) return [];
-    return [...this.ents.values()].filter((e) => this.ctx!.players.get(e.id)?.connected);
+    return [...this.ents.values()].filter((e) => this.info(e.id)?.connected);
   }
 
   private allReady(): boolean {
     const c = this.connectedEnts();
-    return c.length >= CFG.minPlayers && c.every((e) => e.ready);
+    const humans = c.filter((e) => !e.bot);
+    return c.length >= CFG.minPlayers && humans.length > 0 && humans.every((e) => e.ready);
   }
 
   private toggleReady(e: Ent): void {
     e.ready = !e.ready;
-    this.hint(e.id, e.ready ? 'READY ✓  (A to cancel)' : 'Press A when ready · B = dash', 40);
+    this.hint(e, e.ready ? 'READY ✓  (A to cancel)' : READY_HINT, 40);
   }
 
   private startCountdown(now: number): void {
+    if (this.phase.kind !== 'lobby' || this.ents.size === 0) return;
     const endsAt = now + CFG.countdownMs;
     this.phase = { kind: 'countdown', endsAt };
     this.powerups = [];
@@ -205,7 +241,6 @@ class Tag implements GameModule {
   }
 
   private startPlay(now: number): void {
-    if (!this.ctx) return;
     const candidates = this.connectedEnts();
     const pool = candidates.length ? candidates : [...this.ents.values()];
     const it = pool[Math.floor(Math.random() * pool.length)];
@@ -213,22 +248,22 @@ class Tag implements GameModule {
     it.infected = true;
     it.wasIt = true;
     it.graceUntil = now + CFG.infectGraceMs;
-    const itName = this.ctx.players.get(it.id)?.name ?? '???';
+    const itName = this.info(it.id)?.name ?? '???';
     this.phase = { kind: 'play', startedAt: now, endsAt: now + CFG.roundMs, itName };
     this.nextPowerupAt = now + CFG.powerup.spawnEveryMs / 2;
     for (const e of this.ents.values()) {
       e.frozenUntil = 0;
-      if (e.infected) this.hint(e.id, 'You are IT! Tag them all', 300, INFECTED_COLOR);
-      else this.hint(e.id, `RUN! ${itName} is IT`, 150);
+      if (e.infected) this.hint(e, 'You are IT! Tag them all', 300, INFECTED_COLOR);
+      else this.hint(e, `RUN! ${itName} is IT`, 150);
     }
   }
 
   private endRound(now: number): void {
-    if (!this.ctx || this.phase.kind !== 'play') return;
+    if (this.phase.kind !== 'play') return;
     const { startedAt } = this.phase;
     const rows: RankRow[] = [];
     for (const e of this.ents.values()) {
-      const p = this.ctx.players.get(e.id);
+      const p = this.info(e.id);
       if (!p) continue;
       if (!e.infected) e.survivedMs = now - startedAt;
       rows.push({ id: e.id, name: p.name, color: p.color, survivedMs: e.survivedMs, survived: !e.infected, wasIt: e.wasIt });
@@ -239,14 +274,14 @@ class Tag implements GameModule {
       return b.survivedMs - a.survivedMs;
     });
     const survivorsWon = rows.some((r) => r.survived);
-    this.phase = { kind: 'results', endsAt: now + CFG.resultsMs, ranking: rows, survivorsWon };
+    const endsAt = now + CFG.resultsMs;
+    this.phase = { kind: 'results', endsAt, ranking: rows, survivorsWon };
     this.powerups = [];
     rows.forEach((r, i) => {
       const e = this.ents.get(r.id);
       if (!e) return;
-      e.frozenUntil = this.phase.kind === 'results' ? this.phase.endsAt : 0;
-      const p = this.ctx?.players.get(r.id);
-      this.hint(r.id, r.survived ? `You survived! #${i + 1}` : r.wasIt ? `You were IT · #${i + 1}` : `Infected · #${i + 1}`, 100, p?.color);
+      e.frozenUntil = endsAt;
+      this.hint(e, r.survived ? `You survived! #${i + 1}` : r.wasIt ? `You were IT · #${i + 1}` : `Infected · #${i + 1}`, 100, r.color);
     });
   }
 
@@ -256,9 +291,123 @@ class Tag implements GameModule {
     for (const e of this.ents.values()) {
       resetForLobby(e);
       this.respawn(e);
-      const p = this.ctx?.players.get(e.id);
-      this.hint(e.id, 'Press A when ready · B = dash', 0, p?.color);
+      this.hint(e, READY_HINT, 0, this.info(e.id)?.color);
     }
+  }
+
+  // ---------- host controls ----------
+
+  private handleKey(e: KeyboardEvent): void {
+    const t = e.target as HTMLElement | null;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'BUTTON')) return;
+    switch (e.code) {
+      case 'KeyG':
+        this.startCountdown(this.clock);
+        break;
+      case 'KeyR':
+        this.paused = false;
+        this.toLobby();
+        break;
+      case 'Escape':
+        this.togglePause();
+        break;
+      case 'Equal':
+      case 'NumpadAdd':
+        this.addBot();
+        break;
+      case 'Minus':
+      case 'NumpadSubtract':
+        this.removeBot();
+        break;
+    }
+  }
+
+  private togglePause(): void {
+    this.paused = !this.paused;
+    this.hintAll(this.paused ? 'Paused' : 'Go!', this.paused ? 0 : 60);
+  }
+
+  private addBot(): void {
+    const n = ++this.botSeq;
+    const id = `bot-${n.toString().padStart(4, '0')}`;
+    const e = this.ensureEnt(id);
+    e.bot = { name: `Bot ${n}`, color: PLAYER_COLORS[(n + 5) % PLAYER_COLORS.length]!, tx: e.x, ty: e.y, retargetAt: 0 };
+    e.ready = true;
+    e.hasMoved = true;
+    if (this.phase.kind === 'play' || this.phase.kind === 'countdown') e.infected = true;
+  }
+
+  private removeBot(): void {
+    const bots = [...this.ents.values()].filter((e) => e.bot);
+    const last = bots[bots.length - 1];
+    if (last) this.ents.delete(last.id);
+  }
+
+  private botAxis(e: Ent, now: number): Axis {
+    const b = e.bot!;
+    const others = [...this.ents.values()].filter((o) => o !== e);
+    if (this.phase.kind === 'play') {
+      const enemies = others.filter((o) => o.infected !== e.infected);
+      let nearest: Ent | undefined;
+      let best = Infinity;
+      for (const o of enemies) {
+        const d = (o.x - e.x) ** 2 + (o.y - e.y) ** 2;
+        if (d < best) {
+          best = d;
+          nearest = o;
+        }
+      }
+      if (nearest) {
+        const dist = Math.sqrt(best) || 1;
+        const dx = (nearest.x - e.x) / dist;
+        const dy = (nearest.y - e.y) / dist;
+        if (e.infected) return { x: dx, y: dy };
+        if (dist < CFG.bot.fleeDistance) return { x: -dx, y: -dy };
+      }
+    }
+    if (now >= b.retargetAt || Math.hypot(b.tx - e.x, b.ty - e.y) < 20) {
+      b.tx = 40 + Math.random() * Math.max(1, this.width - 80);
+      b.ty = 40 + Math.random() * Math.max(1, this.height - 80);
+      b.retargetAt = now + CFG.bot.retargetMs + Math.random() * 1000;
+    }
+    const dist = Math.hypot(b.tx - e.x, b.ty - e.y) || 1;
+    return { x: (b.tx - e.x) / dist, y: (b.ty - e.y) / dist };
+  }
+
+  private buildPanel(): HTMLElement {
+    const panel = document.createElement('div');
+    panel.style.cssText =
+      'position:absolute;top:10px;right:10px;display:flex;gap:6px;z-index:2;font:600 13px system-ui,sans-serif;';
+    const mk = (label: string, title: string, onClick: () => void) => {
+      const b = document.createElement('button');
+      b.textContent = label;
+      b.title = title;
+      b.style.cssText =
+        'background:rgba(30,41,59,.9);color:#e2e8f0;border:1px solid rgba(148,163,184,.35);border-radius:8px;padding:6px 10px;cursor:pointer;';
+      b.addEventListener('click', (ev) => {
+        ev.preventDefault();
+        onClick();
+        b.blur();
+      });
+      panel.appendChild(b);
+      return b;
+    };
+    this.btnStart = mk('▶ Start', 'Start the round now (G)', () => this.startCountdown(this.clock));
+    this.btnPause = mk('⏸ Pause', 'Pause / resume (Esc)', () => this.togglePause());
+    mk('↺ Reset', 'Back to lobby (R)', () => {
+      this.paused = false;
+      this.toLobby();
+    });
+    mk('+ Bot', 'Add a test bot (+)', () => this.addBot());
+    mk('− Bot', 'Remove a test bot (−)', () => this.removeBot());
+    return panel;
+  }
+  private btnStart: HTMLButtonElement | null = null;
+  private btnPause: HTMLButtonElement | null = null;
+
+  private updatePanel(): void {
+    if (this.btnStart) this.btnStart.disabled = this.phase.kind !== 'lobby' || this.ents.size === 0;
+    if (this.btnPause) this.btnPause.textContent = this.paused ? '▶ Resume' : '⏸ Pause';
   }
 
   // ---------- mechanics ----------
@@ -269,7 +418,7 @@ class Tag implements GameModule {
     e.dashY = e.faceY;
     e.dashUntil = now + CFG.dash.durationMs;
     e.dashCooldownUntil = now + CFG.dash.cooldownMs;
-    this.hint(e.id, undefined, 30);
+    this.hint(e, undefined, 30);
   }
 
   private infections(now: number): void {
@@ -282,7 +431,7 @@ class Tag implements GameModule {
         if (s.shield) {
           s.shield = false;
           s.immuneUntil = now + CFG.shieldEscapeMs;
-          this.hint(s.id, 'Shield saved you! RUN', 120);
+          this.hint(s, 'Shield saved you! RUN', 120);
         } else {
           this.infect(s, now);
         }
@@ -297,7 +446,7 @@ class Tag implements GameModule {
     s.graceUntil = now + CFG.infectGraceMs;
     s.survivedMs = now - this.phase.startedAt;
     s.speedUntil = 0;
-    this.hint(s.id, 'INFECTED! Tag the others', 250, INFECTED_COLOR);
+    this.hint(s, 'INFECTED! Tag the others', 250, INFECTED_COLOR);
   }
 
   private spawnPowerups(now: number): void {
@@ -336,14 +485,14 @@ class Tag implements GameModule {
         e.speedUntil = now + CFG.powerup.speedMs;
         break;
       case 'shield':
-        if (e.infected) e.speedUntil = now + CFG.powerup.speedMs; // useless to the infected: give speed instead
+        if (e.infected) e.speedUntil = now + CFG.powerup.speedMs;
         else e.shield = true;
         break;
       case 'freeze':
         for (const o of this.ents.values()) if (o.infected !== e.infected) o.frozenUntil = now + CFG.powerup.freezeMs;
         break;
     }
-    this.hint(e.id, POWERUPS[kind].label, 60);
+    this.hint(e, POWERUPS[kind].label, 60);
   }
 
   // ---------- helpers ----------
@@ -364,24 +513,17 @@ class Tag implements GameModule {
     e.y = R + Math.random() * Math.max(1, this.height - 2 * R);
   }
 
-  private hint(id: PlayerId, text?: string, vibrate = 0, color?: string): void {
+  private hint(e: Ent, text?: string, vibrate = 0, color?: string): void {
+    if (e.bot) return;
     const ui: { text?: string; vibrate?: number; color?: string } = {};
     if (text !== undefined) ui.text = text.slice(0, 40);
     if (vibrate) ui.vibrate = vibrate;
     if (color) ui.color = color;
-    if (Object.keys(ui).length) this.ctx?.sendToPlayer(id, ui);
+    if (Object.keys(ui).length) this.ctx?.sendToPlayer(e.id, ui);
   }
 
   private hintAll(text: string, vibrate = 0): void {
     this.ctx?.sendToAll(vibrate ? { text, vibrate } : { text });
-  }
-
-  private handleKey(e: KeyboardEvent): void {
-    const t = e.target as HTMLElement | null;
-    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
-    const now = performance.now();
-    if (e.code === 'KeyG' && this.phase.kind === 'lobby' && this.ents.size >= 1) this.startCountdown(now);
-    if (e.code === 'KeyR') this.toLobby();
   }
 
   private resize(): void {

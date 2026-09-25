@@ -4,7 +4,7 @@ export const CFG = {
   speed: 260,
   infectedSpeedMult: 1.12,
   minPlayers: 2,
-  countdownMs: 3000,
+  countdownMs: 5000,
   roundMs: 90_000,
   resultsMs: 8000,
   /** A freshly infected player can't infect for this long (no instant chain reactions). */
@@ -13,6 +13,7 @@ export const CFG = {
   shieldEscapeMs: 700,
   /** How long the "X is IT" banner shows after the round starts. */
   revealMs: 2500,
+  bot: { speedMult: 0.75, retargetMs: 1500, fleeDistance: 220 },
   dash: { speedMult: 2.6, durationMs: 180, cooldownMs: 2500 },
   powerup: {
     radius: 13,
