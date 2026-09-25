@@ -1,8 +1,10 @@
 # Party platform — read this first
 
 Browser party game platform. Phones are controllers (joystick + 2 buttons), a big screen
-("host") renders the shared world, a tiny relay server forwards messages. The actual game is
-not decided; this repo is the platform plus one placeholder game (dots you move around).
+("host") renders the shared world, a tiny relay server forwards messages. This repo is the
+platform plus four game modules in `apps/host/src/games/`: **tag** (Tag / Infection, the default),
+**meadow** (animals collecting items), **paint** (Paint to Conquer) and **dots** (minimal demo).
+Tag, Meadow and Paint each have a README in their folder; `?game=<id>` picks a game.
 
 ## Run it
 
@@ -29,6 +31,7 @@ Useful URLs / flags:
 
 ```
 packages/contract/   THE message contract (zod schemas -> TS types) + ReconnectingSocket. Shared by all.
+packages/world/      @party/world: hand-drawn art (animals, collectibles, ink, palette, scene). Used by meadow.
 apps/server/         Relay: rooms, join codes, player identity, forwarding. ZERO game logic. + fake scripts.
 apps/host/           Big screen. src/game/ = module seam (frozen). src/games/<id>/ = game modules.
 apps/controller/     Phone. Join screen + generic pad (joystick, A, B). Sends input only.

@@ -1,16 +1,36 @@
 # Bubble-Catch
 
-**A game of tag you play on a big screen, using your phone as the controller.**
+**Party games you play on a big screen, using your phone as the controller.**
 
 > Built in a **2-hour build session** at the
 > [Stockholm | Fable 5.1 x Opus 5.5 Build Day](https://luma.com/claude-kh4r) (Claude Community,
 > Epicenter Stockholm, 25 September 2026). See [the team](#the-team) below.
 
-- **Big screen (laptop or TV):** shows the game world, with every player as a coloured dot.
+- **Big screen (laptop or TV):** shows the game world, with every player on it.
 - **Phones:** each one becomes a controller with a joystick and two buttons, **A** and **B**.
 - **To join:** scan the QR code on the big screen or type the 4-letter code. No app to install.
 
-## How to play
+## The games
+
+Four games, same phones. Every game has a ready-up lobby, a countdown, a timed round and a results
+screen, plus host buttons (Start, Pause, Reset, add/remove test bots) in the top-right corner.
+
+| Game | How you win | Open it with |
+|---|---|---|
+| **Tag / Infection** (default) | One player is IT and infects everyone they touch. Survive 90 seconds. | `/host/` |
+| **Meadow** | Be a hand-drawn animal and collect the most bubbles, leaves, berries and flowers in 60 seconds. | `/host/?game=meadow` |
+| **Paint to Conquer** | Be a goo blob that paints the floor. Own the most floor when time runs out. | `/host/?game=paint` |
+| **Dots** | No winner: the tiny demo game that proves phones → screen works. | `/host/?game=dots` |
+
+| Tag | Meadow | Paint to Conquer |
+|---|---|---|
+| ![Tag: the countdown shows the rules](docs/screenshots/tag.jpg) | ![Meadow: animals collecting bubbles during a round](docs/screenshots/meadow.jpg) | ![Paint to Conquer: goo blobs painting the floor](docs/screenshots/paint.jpg) |
+
+Full guides: [Tag](apps/host/src/games/tag/README.md) ·
+[Meadow](apps/host/src/games/meadow/README.md) ·
+[Paint to Conquer](apps/host/src/games/paint/README.md)
+
+## How to play Tag (the default game)
 
 1. **Get ready.** Everyone runs around. Press **A** when you're ready. The game starts when everyone
    is ready (at least 2 players).
@@ -23,7 +43,7 @@
    - Everyone caught before then: **the infected win.**
 6. **Results** show who lasted longest, then everyone goes back to the ready-up screen.
 
-## Tricks
+## Tag tricks
 
 - **B = dash.** A quick burst of speed to escape or catch someone. You can use it again after 2.5 seconds.
 - **Power-ups** appear on the floor. Run over one to grab it:
@@ -100,7 +120,10 @@ changing the phone side.
 
 ## More
 
-- Full game details: [apps/host/src/games/tag/README.md](apps/host/src/games/tag/README.md)
+- Game guides: [Tag](apps/host/src/games/tag/README.md) ·
+  [Meadow](apps/host/src/games/meadow/README.md) ·
+  [Paint to Conquer](apps/host/src/games/paint/README.md)
+- Write your own game: [docs/GAME_MODULE.md](docs/GAME_MODULE.md)
 - Developer orientation, run options and the rules: [CLAUDE.md](CLAUDE.md). Docs live in [docs/](docs).
 
 ## Built at Stockholm | Fable 5.1 x Opus 5.5 Build Day 🏗️
