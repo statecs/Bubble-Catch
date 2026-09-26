@@ -10,6 +10,10 @@
 - **Phones:** each one becomes a controller with a joystick and two buttons, **A** and **B**.
 - **To join:** scan the QR code on the big screen or type the 4-letter code. No app to install.
 
+<p align="center">
+  <img src="docs/screenshots/demo.gif" alt="Meadow and Paint to Conquer being played with phones as controllers" width="480">
+</p>
+
 ## The games
 
 Four games, same phones. When you open the host page on the big screen you get a **game picker**:
